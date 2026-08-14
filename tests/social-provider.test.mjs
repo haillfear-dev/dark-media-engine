@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { providerConfigurationStatus, SocialProviderError } from "../src/social/provider.ts";
+import { tiktokAuthorizationUrl, tiktokOAuthErrorDiagnostic, tiktokTokenBody } from "../src/social/tiktok-oauth.ts";
 
 test("providers remain NOT_CONFIGURED without every backend credential", () => { assert.equal(providerConfigurationStatus("TIKTOK", {}), "NOT_CONFIGURED"); assert.equal(providerConfigurationStatus("YOUTUBE", { GOOGLE_CLIENT_ID: "id" }), "NOT_CONFIGURED"); });
 test("provider configuration never requires or stores a social password", () => { const env = { TIKTOK_CLIENT_KEY: "key", TIKTOK_CLIENT_SECRET: "secret", TIKTOK_REDIRECT_URI: "http://localhost/callback", TOKEN_ENCRYPTION_KEY: "encryption" }; assert.equal(providerConfigurationStatus("TIKTOK", env), "CONFIGURED"); assert.equal("TIKTOK_PASSWORD" in env, false); });
 test("provider errors expose safe operator codes", () => { const error = new SocialProviderError("QUOTA_EXCEEDED", "Limite atingido.", "technical-provider-payload"); assert.equal(error.code, "QUOTA_EXCEEDED"); assert.equal(error.message, "Limite atingido."); });
+const tiktokConfiguration = { clientKey: "client-key", clientSecret: "client-secret", redirectUri: "https://example.test/callback" };
+test("TikTok authorization URL sends S256 PKCE without exposing its verifier", () => { const url = tiktokAuthorizationUrl(tiktokConfiguration, "csrf-state", "pkce-challenge"); assert.equal(url.searchParams.get("code_challenge"), "pkce-challenge"); assert.equal(url.searchParams.get("code_challenge_method"), "S256"); assert.equal(url.searchParams.get("state"), "csrf-state"); assert.equal(url.searchParams.has("code_verifier"), false); assert.equal(url.searchParams.has("client_secret"), false); });
+
+test("TikTok token exchange body carries every required value and the original PKCE verifier", () => { const body = tiktokTokenBody(tiktokConfiguration, "authorization-code", "original-verifier"); assert.equal(body.get("client_key"), tiktokConfiguration.clientKey); assert.equal(body.get("client_secret"), tiktokConfiguration.clientSecret); assert.equal(body.get("code"), "authorization-code"); assert.equal(body.get("grant_type"), "authorization_code"); assert.equal(body.get("redirect_uri"), tiktokConfiguration.redirectUri); assert.equal(body.get("code_verifier"), "original-verifier"); });
+
+test("TikTok OAuth diagnostics expose only provider error fields and redact sensitive values", () => { const diagnostic = tiktokOAuthErrorDiagnostic(JSON.stringify({ error: "invalid_grant", error_description: "Verifier secret-verifier rejected", access_token: "must-not-log", refresh_token: "must-not-log", client_secret: "must-not-log", code_verifier: "must-not-log", code: "must-not-log" }), ["secret-verifier"]); assert.deepEqual(diagnostic, { error: "invalid_grant", error_description: "Verifier [REDACTED] rejected" }); });

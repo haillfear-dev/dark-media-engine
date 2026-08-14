@@ -5,7 +5,8 @@ Implementação baseada no **Content Posting API / Upload API** e OAuth v2 ofici
 ## O que funciona agora
 
 - Provider backend isolado da UI.
-- Authorization URL com state e scopes mínimos do fluxo implementado: `user.info.basic` e `video.upload`.
+- Authorization URL com proteção CSRF por `state` e PKCE `S256`; conforme o Login Kit Desktop, o challenge é `HEX(SHA256(code_verifier))`, e o `code_verifier` fica criptografado somente no backend durante o fluxo.
+- Scopes mínimos do fluxo implementado: `user.info.basic` e `video.upload`.
 - Code exchange, leitura de identidade, refresh e revogação.
 - Inicialização oficial do upload de inbox por `POST /v2/post/publish/inbox/video/init/` com `FILE_UPLOAD`.
 - Upload do MP4 no `upload_url` retornado pelo TikTok.

@@ -17,8 +17,8 @@ export type UploadResult = { externalPostId: string; status: "PROCESSING" | "PUB
 export interface SocialProvider {
   readonly id: "TIKTOK" | "YOUTUBE";
   configurationStatus(): IntegrationStatus;
-  authorizationUrl(state: string): URL;
-  exchangeCode(code: string): Promise<ProviderConnection>;
+  authorizationUrl(state: string, codeChallenge?: string): URL;
+  exchangeCode(code: string, codeVerifier?: string): Promise<ProviderConnection>;
   getAccountIdentity(connection: ProviderConnection): Promise<{ externalAccountId: string; displayName: string; username?: string }>;
   refresh(connection: ProviderConnection): Promise<ProviderConnection>;
   revoke(connection: ProviderConnection): Promise<void>;

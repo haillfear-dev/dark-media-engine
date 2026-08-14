@@ -1,0 +1,3 @@
+import { DatabaseSync } from 'node:sqlite'; import { readFileSync, readdirSync, mkdirSync } from 'node:fs'; import { dirname,resolve } from 'node:path';
+const path=resolve(process.env.DATABASE_PATH||'./data/content-os.db'); mkdirSync(dirname(path),{recursive:true}); const db=new DatabaseSync(path); db.exec('CREATE TABLE IF NOT EXISTS _migrations(name TEXT PRIMARY KEY, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+for(const name of readdirSync('migrations').sort()){if(!db.prepare('SELECT 1 FROM _migrations WHERE name=?').get(name)){db.exec(readFileSync(`migrations/${name}`,'utf8'));db.prepare('INSERT INTO _migrations(name) VALUES(?)').run(name);console.log(`applied ${name}`)}} db.close();

@@ -1,0 +1,8 @@
+node_modules
+.next
+data/*.db*
+storage/*
+!storage/.gitkeep
+.env
+*.log
+*.tsbuildinfo

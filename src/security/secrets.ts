@@ -19,3 +19,5 @@ export function decryptSecret(payload: string) {
 export const hashValue = (value: string) => createHash("sha256").update(value).digest("hex");
 export function safeEqual(left: string, right: string) { const a = Buffer.from(left), b = Buffer.from(right); return a.length === b.length && timingSafeEqual(a, b); }
 export const randomState = () => randomBytes(32).toString("base64url");
+export const randomCodeVerifier = () => randomBytes(64).toString("base64url");
+export const codeChallenge = (verifier: string) => createHash("sha256").update(verifier).digest("base64url");

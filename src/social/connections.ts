@@ -1,5 +1,5 @@
 import { db, one, Row } from "@/src/db";
-import { decryptSecret, encryptSecret, hashValue, randomState } from "@/src/security/secrets";
+import { codeChallenge, decryptSecret, encryptSecret, hashValue, randomCodeVerifier, randomState } from "@/src/security/secrets";
 import { ProviderConnection, SocialProvider } from "./provider";
 import { TikTokProvider } from "./tiktok-provider";
 import { YouTubeProvider } from "./youtube-provider";
@@ -15,8 +15,9 @@ export function integrationState(providerId: ProviderId, brandId = "brand-radar"
 
 export function beginOAuth(providerId: ProviderId, brandId: string) {
   const provider = providerFor(providerId), state = randomState(), expires = new Date(Date.now() + 10 * 60_000).toISOString();
-  db().prepare("INSERT INTO oauth_states(state_hash,provider,brand_id,expires_at) VALUES(?,?,?,?)").run(hashValue(state), providerId, brandId, expires);
-  return { state, url: provider.authorizationUrl(state) };
+  const codeVerifier = providerId === "TIKTOK" ? randomCodeVerifier() : undefined;
+  db().prepare("INSERT INTO oauth_states(state_hash,provider,brand_id,code_verifier_encrypted,expires_at) VALUES(?,?,?,?,?)").run(hashValue(state), providerId, brandId, codeVerifier ? encryptSecret(codeVerifier) : null, expires);
+  return { state, url: provider.authorizationUrl(state, codeVerifier ? codeChallenge(codeVerifier) : undefined) };
 }
 
 export function consumeOAuthState(providerId: ProviderId, state: string) {
@@ -24,11 +25,11 @@ export function consumeOAuthState(providerId: ProviderId, state: string) {
   if (!row || row.consumed_at || Date.parse(String(row.expires_at)) <= Date.now()) throw new Error("INVALID_OAUTH_STATE");
   const result = db().prepare("UPDATE oauth_states SET consumed_at=CURRENT_TIMESTAMP WHERE state_hash=? AND consumed_at IS NULL").run(hash);
   if (Number(result.changes) !== 1) throw new Error("INVALID_OAUTH_STATE");
-  return String(row.brand_id);
+  return { brandId: String(row.brand_id), codeVerifier: row.code_verifier_encrypted ? decryptSecret(String(row.code_verifier_encrypted)) : undefined };
 }
 
-export async function finishOAuth(providerId: ProviderId, brandId: string, code: string) {
-  const provider = providerFor(providerId), tokens = await provider.exchangeCode(code), identity = await provider.getAccountIdentity(tokens);
+export async function finishOAuth(providerId: ProviderId, brandId: string, code: string, codeVerifier?: string) {
+  const provider = providerFor(providerId), tokens = await provider.exchangeCode(code, codeVerifier), identity = await provider.getAccountIdentity(tokens);
   db().prepare(`INSERT INTO social_connections(id,brand_id,provider,status,external_account_id,display_name,username,access_token_encrypted,refresh_token_encrypted,token_expires_at,scopes,error_code,error_detail) VALUES(?,?,?,?,?,?,?,?,?,?,? ,NULL,NULL) ON CONFLICT(brand_id,provider) DO UPDATE SET status='CONNECTED',external_account_id=excluded.external_account_id,display_name=excluded.display_name,username=excluded.username,access_token_encrypted=excluded.access_token_encrypted,refresh_token_encrypted=excluded.refresh_token_encrypted,token_expires_at=excluded.token_expires_at,error_code=NULL,error_detail=NULL,updated_at=CURRENT_TIMESTAMP`).run(`connection-${crypto.randomUUID()}`, brandId, providerId, "CONNECTED", identity.externalAccountId, identity.displayName, identity.username ?? null, encryptSecret(tokens.accessToken), tokens.refreshToken ? encryptSecret(tokens.refreshToken) : null, tokens.expiresAt ?? null, providerId === "TIKTOK" ? "user.info.basic,video.upload" : "youtube.upload,youtube.readonly");
   const platform = providerId === "YOUTUBE" ? "YOUTUBE_SHORTS" : "TIKTOK";
   db().prepare(`INSERT INTO social_accounts(id,brand_id,platform,username,display_name,external_account_id,connection_status) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET username=excluded.username,display_name=excluded.display_name,external_account_id=excluded.external_account_id,connection_status='CONNECTED'`).run(`account-${brandId}-${platform.toLowerCase()}`, brandId, platform, identity.username ?? identity.displayName, identity.displayName, identity.externalAccountId, "CONNECTED");

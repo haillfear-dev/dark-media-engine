@@ -10,7 +10,7 @@ Radar Pop opera em pt-BR com agressividade editorial, prioridade de viralidade e
 
 ## Fluxo funcional
 
-Brand Brain → Sources → Source Items → Topic cluster → Hot Queue → Idea/angle → Content master → variantes por plataforma → aprovação → Publication agendada. Os dados de demonstração são integralmente fictícios.
+Brand Brain → Sources → Source Items → Topic cluster → Hot Queue → três candidatos gerados → escolha humana → Content master → variantes por plataforma → vídeo → aprovação → Publication. Os dados de demonstração são integralmente fictícios. Manual permanece disponível, mas não é o caminho padrão.
 
 ## Próximos resultados
 

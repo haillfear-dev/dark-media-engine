@@ -8,6 +8,6 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (!asset) return new Response("Not found", { status: 404 });
   try {
     const file = await getAssetStorage().read(String(asset.storage_location));
-    return new Response(file, { headers: { "Content-Type": String(asset.mime_type ?? "video/mp4"), "Content-Length": String(file.length), "Cache-Control": "private, max-age=60", "Accept-Ranges": "bytes" } });
+    return new Response(new Uint8Array(file), { headers: { "Content-Type": String(asset.mime_type ?? "video/mp4"), "Content-Length": String(file.length), "Cache-Control": "private, max-age=60", "Accept-Ranges": "bytes" } });
   } catch { return new Response("Asset unavailable", { status: 404 }); }
 }

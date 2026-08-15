@@ -19,6 +19,6 @@ A máquina propõe e o humano decide. O caminho principal não começa com um fo
 
 Para testar localmente, defina `AI_PROVIDER=development`. A interface mostra explicitamente “Provider de desenvolvimento”. Sem configuração, o sistema exibe `IA NÃO CONFIGURADA`, não quebra e não fabrica resposta.
 
-## O que depende de provider externo
+## Provider real e automação
 
-Um provider de modelo real ainda deve implementar o mesmo contrato backend e validar saída estruturada. `AI_API_KEY` é reservado ao backend; nenhuma chave é enviada a componente React. Antes de produção, devem ser adicionados timeout, rate limit, auditoria de prompt/versão, redaction e validação factual da saída.
+`AI_PROVIDER=openai` ativa o provider OpenAI backend-only com Responses API, Structured Outputs, validação Zod, timeout, contexto limitado e auditoria de tokens/custo. A seleção gera Master, variantes e RenderPlan em sequência. `AI_PROVIDER=development` continua sendo apenas um modo determinístico explicitamente rotulado; sem configuração não há saída simulada. O pipeline de vídeo usa Creatomate e só alcança `RENDERED` depois de polling confirmado pelo provider. Consulte `AUTOMATED_CONTENT_PIPELINE.md`.

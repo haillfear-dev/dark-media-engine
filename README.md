@@ -28,3 +28,7 @@ npm run build
 ## Escopo
 
 Brand Brain, fontes, Topics, Hot Queue, batches de três candidatos, seleção, Master Content, claims, variantes, Asset MP4, aprovação, agendamento, OAuth e Publications persistem em SQLite. TikTok e YouTube possuem providers oficiais backend, mas permanecem `NOT_CONFIGURED` sem credenciais e não simulam sucesso. Consulte `docs/AI_WORKFLOW.md` e `docs/SOCIAL_INTEGRATIONS.md`.
+
+## OpenAI e vídeo automatizado
+
+Configure `AI_PROVIDER=openai` e `OPENAI_API_KEY` para geração real estruturada. Configure `CREATOMATE_API_KEY` e `CREATOMATE_TEMPLATE_ID` para render real. A seleção de uma ideia gera Master Content, variantes TikTok/Shorts e RenderPlan; a aprovação permanece bloqueada até a confirmação `RENDERED` do Creatomate. Sem credenciais, a interface informa a indisponibilidade e não simula sucesso. Veja `docs/AUTOMATED_CONTENT_PIPELINE.md`.

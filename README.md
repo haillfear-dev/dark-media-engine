@@ -32,3 +32,9 @@ Brand Brain, fontes, Topics, Hot Queue, batches de três candidatos, seleção, 
 ## OpenAI e vídeo automatizado
 
 Configure `AI_PROVIDER=openai` e `OPENAI_API_KEY` para geração real estruturada. Configure `CREATOMATE_API_KEY` e `CREATOMATE_TEMPLATE_ID` para render real. A seleção de uma ideia gera Master Content, variantes TikTok/Shorts e RenderPlan; a aprovação permanece bloqueada até a confirmação `RENDERED` do Creatomate. Sem credenciais, a interface informa a indisponibilidade e não simula sucesso. Veja `docs/AUTOMATED_CONTENT_PIPELINE.md`.
+
+## Ingestão automática de fontes
+
+Depois de migrations e seed, execute `npm run ingest -- --force` para coletar um lote pequeno das fontes editoriais habilitadas. Execuções normais com `npm run ingest` respeitam intervalos, ETag, Last-Modified e backoff persistidos. A Hot Queue prioriza Topics `REAL`; fixtures fictícias aparecem somente quando ainda não existem Topics reais.
+
+A coleta usa RSS/Atom, news sitemap ou HTML estruturado conforme a configuração editável de cada fonte, sem Selenium e sem contornar login, paywall, CAPTCHA ou bloqueios. Imagens OpenGraph são apenas referência editorial e nunca substituem o `AssetProvider` licenciado usado no vídeo. Consulte `docs/SOURCE_INGESTION.md`.

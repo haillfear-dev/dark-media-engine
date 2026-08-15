@@ -2,12 +2,15 @@
 
 import { getAssetStorage } from "@/src/assets/storage";
 import { generateAndPersistCandidates, generateContentForIdea, generateVariantsForContent } from "@/src/ai/workflow";
-import { db } from "@/src/db";
+import { db, one, Row } from "@/src/db";
 import { distribute } from "@/src/social/distribution";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { refreshRender, submitRender } from "@/src/render/workflow";
 import { resolveRenderPlanAssets } from "@/src/assets/resolution";
+import { runSourceIngestion } from "@/src/ingestion/job";
+import { HttpSourceIngestionProvider } from "@/src/ingestion/provider";
+import type { SourceConfig } from "@/src/ingestion/types";
 
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const val = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
@@ -18,6 +21,9 @@ export async function updateBrand(form: FormData) {
 }
 export async function addSource(form: FormData) { db().prepare("INSERT INTO sources(id,brand_id,name,type,url,enabled,priority,reliability,category) VALUES(?,?,?,?,?,1,?,?,?)").run(id("src"), val(form, "brandId"), val(form, "name"), val(form, "type"), val(form, "url"), Number(val(form, "priority")), Number(val(form, "reliability")), val(form, "category")); revalidatePath("/sources"); }
 export async function toggleSource(form: FormData) { db().prepare("UPDATE sources SET enabled=CASE enabled WHEN 1 THEN 0 ELSE 1 END WHERE id=?").run(val(form, "id")); revalidatePath("/sources"); }
+export async function collectSource(form: FormData) { const sourceId=val(form,"id");const [result]=await runSourceIngestion({force:true,sourceId});redirect(`/sources?collected=${sourceId}&status=${result?.status??"NOT_DUE"}`); }
+export async function testSource(form:FormData){const sourceId=val(form,"id"),row=one<Row>("SELECT * FROM sources WHERE id=?",sourceId);if(!row)redirect("/sources?test=NOT_FOUND");let target="/sources?test=FAILED";try{const source:SourceConfig={id:String(row.id),name:String(row.name),url:String(row.url),baseUrl:String(row.base_url??row.url),category:String(row.category),language:String(row.language),country:String(row.country),priority:Number(row.priority),reliability:Number(row.reliability),strategy:String(row.ingestion_strategy) as SourceConfig["strategy"],etag:null,lastModified:null};const result=await new HttpSourceIngestionProvider().collect(source);target=`/sources?test=SUCCESS&items=${result.items.length}`}catch{}redirect(target)}
+export async function updateSource(form:FormData){db().prepare(`UPDATE sources SET name=?,base_url=?,url=?,category=?,language=?,country=?,priority=?,reliability=?,ingestion_strategy=?,polling_interval_minutes=? WHERE id=?`).run(val(form,"name"),val(form,"baseUrl"),val(form,"url"),val(form,"category"),val(form,"language"),val(form,"country"),Number(val(form,"priority")),Number(val(form,"reliability")),val(form,"strategy"),Number(val(form,"interval")),val(form,"id"));revalidatePath("/sources");}
 export async function addSourceItem(form: FormData) { db().prepare("INSERT INTO source_items(id,source_id,title,url,published_at,summary,processing_status,provenance_group) VALUES(?,?,?,?,?,?,?,?)").run(id("item"), val(form, "sourceId"), val(form, "title"), val(form, "url"), val(form, "publishedAt") || null, val(form, "summary"), "NEW", val(form, "provenance") || null); revalidatePath("/sources"); }
 
 export async function generateIdeaCandidates(form: FormData) {

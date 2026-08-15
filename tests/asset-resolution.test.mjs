@@ -1,0 +1,19 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { DisabledAssetProvider, PexelsAssetProvider } from "../src/assets/provider.ts";
+import { resolutionState } from "../src/assets/resolution.ts";
+import { CREATOMATE_TEMPLATE_CONTRACT, CreatomateProvider, renderModifications } from "../src/render/provider.ts";
+
+const plan = { aspectRatio:"9:16", targetDuration:10, backgroundAudio:{mood:"news",volume:.2}, branding:{brandName:"Radar",primaryColor:"#fff",fontFamily:"Inter",logoAssetUrl:null}, scenes:[
+  {order:1,text:"Hook",durationSeconds:5,visualType:"STOCK",assetQuery:"football stadium",caption:"Hook",captionPosition:"CENTER",transition:"cut",voiceOverText:"Hook"},
+  {order:2,text:"CTA",durationSeconds:5,visualType:"BRAND",assetQuery:"",caption:"CTA",captionPosition:"BOTTOM",transition:"fade",voiceOverText:"CTA"},
+] };
+const resolved = [{sceneOrder:1,query:"football stadium",provider:"PEXELS",assetUrl:"https://cdn.test/stadium.mp4",assetType:"VIDEO",attribution:"Creator",licenseMetadata:{license:"Pexels"},status:"RESOLVED"},{sceneOrder:2,query:"",provider:"NONE",assetUrl:null,assetType:null,attribution:null,licenseMetadata:{},status:"NOT_REQUIRED"}];
+
+test("absence of asset provider is explicit and never returns media",async()=>{const provider=new DisabledAssetProvider();assert.equal(provider.available,false);await assert.rejects(provider.resolve({query:"x",preferredKind:"IMAGE"}),error=>error.code==="ASSET_PROVIDER_NOT_CONFIGURED")});
+test("Pexels resolves a usable asset with attribution and license metadata",async()=>{const fetcher=async()=>new Response(JSON.stringify({photos:[{id:7,url:"https://pexels.test/photo",photographer:"Creator",photographer_url:"https://pexels.test/creator",src:{portrait:"https://images.pexels.test/photo.jpg"}}]}));const asset=await new PexelsAssetProvider("secret",fetcher).resolve({query:"stadium",preferredKind:"IMAGE"});assert.equal(asset.url,"https://images.pexels.test/photo.jpg");assert.equal(asset.attribution,"Creator");assert.equal(asset.licenseMetadata.license,"Pexels License")});
+test("missing required asset produces NEEDS_MEDIA",()=>{assert.deepEqual(resolutionState(plan,[]),{status:"NEEDS_MEDIA",missingSceneOrders:[1]})});
+test("complete required assets produce READY_TO_RENDER",()=>{assert.deepEqual(resolutionState(plan,resolved),{status:"READY_TO_RENDER",missingSceneOrders:[]})});
+test("Creatomate modifications contain real media URL and never assetQuery",()=>{const modifications=renderModifications(plan,resolved);assert.equal(modifications["Scene-1.Media"],"https://cdn.test/stadium.mp4");assert.equal(Object.keys(modifications).some(key=>key.includes("AssetQuery")),false);assert.equal(JSON.stringify(modifications).includes("football stadium"),false)});
+test("render is prevented when required media or template contract is missing",async()=>{const provider=new CreatomateProvider("secret","template",async()=>{throw new Error("fetch must not run")},CREATOMATE_TEMPLATE_CONTRACT);await assert.rejects(provider.submit(plan,[]),error=>error.code==="CREATOMATE_MEDIA_REQUIRED");const incompatible=new CreatomateProvider("secret","template",async()=>{throw new Error("fetch must not run")},"wrong");await assert.rejects(incompatible.submit(plan,resolved),error=>error.code==="CREATOMATE_TEMPLATE_CONTRACT_INVALID")});
+test("Creatomate sends resolved URL and keeps submission at RENDERING",async()=>{let payload;const fetcher=async(_url,init)=>{payload=JSON.parse(init.body);return new Response(JSON.stringify([{id:"real-id"}]),{status:200})};const provider=new CreatomateProvider("secret","template",fetcher,CREATOMATE_TEMPLATE_CONTRACT);const result=await provider.submit(plan,resolved);assert.equal(result.status,"RENDERING");assert.equal(payload.modifications["Scene-1.Media"],resolved[0].assetUrl);assert.equal(JSON.stringify(payload).includes("football stadium"),false)});

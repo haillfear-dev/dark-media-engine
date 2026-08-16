@@ -32,14 +32,14 @@ export async function resolveRenderPlanAssets(renderPlanId: string, provider: As
   if (!row) throw new Error("RENDER_PLAN_NOT_FOUND");
   const plan = renderPlanSchema.parse(JSON.parse(String(row.plan_json)));
 
-  for (const scene of plan.scenes) {
+  await Promise.all(plan.scenes.map(async scene => {
     if (!sceneRequiresMedia(scene.visualType)) {
       persistSceneAsset(renderPlanId, scene.order, scene.assetQuery, "NONE", null, "NOT_REQUIRED");
-      continue;
+      return;
     }
     if (!provider.available) {
       persistSceneAsset(renderPlanId, scene.order, scene.assetQuery, provider.name, null, "MISSING", "ASSET_PROVIDER_NOT_CONFIGURED");
-      continue;
+      return;
     }
     try {
       const resolved = await provider.resolve({ query: scene.assetQuery, preferredKind: scene.visualType === "SOURCE_MEDIA" ? "VIDEO" : "IMAGE" });
@@ -48,7 +48,7 @@ export async function resolveRenderPlanAssets(renderPlanId: string, provider: As
     } catch (error) {
       persistSceneAsset(renderPlanId, scene.order, scene.assetQuery, provider.name, null, "FAILED", (error as { code?: string }).code ?? "ASSET_RESOLUTION_FAILED");
     }
-  }
+  }));
 
   const assets = loadResolvedAssets(renderPlanId);
   const state = resolutionState(plan, assets);

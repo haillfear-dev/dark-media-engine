@@ -83,9 +83,19 @@ export class PexelsAssetProvider implements AssetProvider {
   }
 
   private async request(url: string) {
-    const response = await this.fetcher(url, { headers: { Authorization: this.apiKey } });
-    if (!response.ok) throw new AssetProviderError("ASSET_PROVIDER_REQUEST_FAILED", `Pexels indisponível (${response.status})`);
-    return response;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Number(process.env.ASSET_PROVIDER_TIMEOUT_MS || 8000));
+    try {
+      const response = await this.fetcher(url, { headers: { Authorization: this.apiKey }, signal: controller.signal });
+      if (!response.ok) throw new AssetProviderError("ASSET_PROVIDER_REQUEST_FAILED", `Pexels indisponível (${response.status})`);
+      return response;
+    } catch (error) {
+      if (error instanceof AssetProviderError) throw error;
+      if ((error as Error).name === "AbortError") throw new AssetProviderError("ASSET_PROVIDER_TIMEOUT", "Tempo limite do provider de mídia excedido");
+      throw new AssetProviderError("ASSET_PROVIDER_NETWORK_ERROR", "Falha de comunicação com o provider de mídia");
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }
 

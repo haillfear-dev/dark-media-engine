@@ -31,7 +31,24 @@ export async function generateIdeaCandidates(form: FormData) {
   try { const batch = await generateAndPersistCandidates(topicId, generation); redirect(`/ideas?topic=${topicId}&batch=${batch}`); }
   catch (error) { if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error; redirect(`/ideas?topic=${topicId}&ai=not-configured`); }
 }
-export async function selectCandidate(form: FormData) { const ideaId = val(form, "ideaId"); try { const contentId = await generateContentForIdea(ideaId); redirect(`/studio?content=${contentId}&generated=all`); } catch (error) { if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error; redirect(`/studio?idea=${ideaId}&ai=failed`); } }
+export async function selectCandidate(form: FormData) {
+  const ideaId = val(form, "ideaId"), topicId = val(form, "topicId"), batchId = val(form, "batchId");
+  let target: string;
+  try {
+    const contentId = await generateContentForIdea(ideaId);
+    target = `/studio?content=${encodeURIComponent(contentId)}&generated=all`;
+  } catch (error) {
+    const code = safeErrorCode(error);
+    target = `/ideas?topic=${encodeURIComponent(topicId)}&batch=${encodeURIComponent(batchId)}&error=${encodeURIComponent(code)}`;
+  }
+  // Keep redirect outside the catch: Next implements it as a framework exception.
+  redirect(target);
+}
+
+function safeErrorCode(error: unknown) {
+  const code = error && typeof error === "object" && "code" in error ? String(error.code) : error instanceof Error ? error.message : "UNKNOWN_ERROR";
+  return /^[A-Z0-9_]+$/.test(code) ? code : "UNKNOWN_ERROR";
+}
 export async function addIdea(form: FormData) { const newId = id("idea"); db().prepare(`INSERT INTO ideas(id,topic_id,title,angle,rationale,rank_score,status,suggested_hook,generated_by) VALUES(?,?,?,?,?,0,'DRAFT',?,'MANUAL')`).run(newId, val(form, "topicId"), val(form, "title"), val(form, "angle"), val(form, "rationale"), val(form, "suggestedHook")); redirect(`/studio?idea=${newId}`); }
 export async function generateMasterContent(form: FormData) { try { const contentId = await generateContentForIdea(val(form, "ideaId")); redirect(`/studio?content=${contentId}`); } catch (error) { if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error; redirect(`/studio?idea=${val(form, "ideaId")}&ai=not-configured`); } }
 export async function generateVariants(form: FormData) { const contentId = val(form, "contentId"); try { await generateVariantsForContent(contentId); redirect(`/studio?content=${contentId}&variants=generated`); } catch (error) { if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error; redirect(`/studio?content=${contentId}&ai=not-configured`); } }

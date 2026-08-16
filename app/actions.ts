@@ -11,6 +11,7 @@ import { resolveRenderPlanAssets } from "@/src/assets/resolution";
 import { runSourceIngestion } from "@/src/ingestion/job";
 import { HttpSourceIngestionProvider } from "@/src/ingestion/provider";
 import type { SourceConfig } from "@/src/ingestion/types";
+import { safeErrorCode } from "@/src/errors";
 
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const val = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
@@ -29,7 +30,7 @@ export async function addSourceItem(form: FormData) { db().prepare("INSERT INTO 
 export async function generateIdeaCandidates(form: FormData) {
   const topicId = val(form, "topicId"), generation = Number(val(form, "generation")) || 0;
   try { const batch = await generateAndPersistCandidates(topicId, generation); redirect(`/ideas?topic=${topicId}&batch=${batch}`); }
-  catch (error) { if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error; redirect(`/ideas?topic=${topicId}&ai=not-configured`); }
+  catch (error) { if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error; redirect(`/ideas?topic=${encodeURIComponent(topicId)}&error=${encodeURIComponent(safeErrorCode(error))}`); }
 }
 export async function selectCandidate(form: FormData) {
   const ideaId = val(form, "ideaId"), topicId = val(form, "topicId"), batchId = val(form, "batchId");
@@ -45,13 +46,9 @@ export async function selectCandidate(form: FormData) {
   redirect(target);
 }
 
-function safeErrorCode(error: unknown) {
-  const code = error && typeof error === "object" && "code" in error ? String(error.code) : error instanceof Error ? error.message : "UNKNOWN_ERROR";
-  return /^[A-Z0-9_]+$/.test(code) ? code : "UNKNOWN_ERROR";
-}
 export async function addIdea(form: FormData) { const newId = id("idea"); db().prepare(`INSERT INTO ideas(id,topic_id,title,angle,rationale,rank_score,status,suggested_hook,generated_by) VALUES(?,?,?,?,?,0,'DRAFT',?,'MANUAL')`).run(newId, val(form, "topicId"), val(form, "title"), val(form, "angle"), val(form, "rationale"), val(form, "suggestedHook")); redirect(`/studio?idea=${newId}`); }
-export async function generateMasterContent(form: FormData) { try { const contentId = await generateContentForIdea(val(form, "ideaId")); redirect(`/studio?content=${contentId}`); } catch (error) { if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error; redirect(`/studio?idea=${val(form, "ideaId")}&ai=not-configured`); } }
-export async function generateVariants(form: FormData) { const contentId = val(form, "contentId"); try { await generateVariantsForContent(contentId); redirect(`/studio?content=${contentId}&variants=generated`); } catch (error) { if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error; redirect(`/studio?content=${contentId}&ai=not-configured`); } }
+export async function generateMasterContent(form: FormData) { try { const contentId = await generateContentForIdea(val(form, "ideaId")); redirect(`/studio?content=${contentId}`); } catch (error) { if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error; redirect(`/studio?idea=${val(form, "ideaId")}&aiError=${safeErrorCode(error)}`); } }
+export async function generateVariants(form: FormData) { const contentId = val(form, "contentId"); try { await generateVariantsForContent(contentId); redirect(`/studio?content=${contentId}&variants=generated`); } catch (error) { if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error; redirect(`/studio?content=${contentId}&aiError=${safeErrorCode(error)}`); } }
 
 export async function saveContent(form: FormData) { const contentId = val(form, "contentId") || id("content"), existing = db().prepare("SELECT id FROM contents WHERE id=?").get(contentId); if (existing) db().prepare("UPDATE contents SET title=?,thesis=?,angle=?,master_hook=?,master_script=?,caption_base=?,status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(val(form, "title"), val(form, "thesis"), val(form, "angle"), val(form, "hook"), val(form, "script"), val(form, "captionBase"), val(form, "status"), contentId); else db().prepare("INSERT INTO contents(id,brand_id,topic_id,idea_id,title,thesis,angle,master_hook,master_script,caption_base,status) VALUES(?,?,?,?,?,?,?,?,?,?,'DRAFT')").run(contentId, val(form, "brandId"), val(form, "topicId"), val(form, "ideaId"), val(form, "title"), val(form, "thesis"), val(form, "angle"), val(form, "hook"), val(form, "script"), val(form, "captionBase")); revalidatePath("/studio"); redirect(`/studio?content=${contentId}`); }
 export async function feedback(form: FormData) { const action = val(form, "action"), contentId = val(form, "contentId"), current = db().prepare("SELECT status FROM contents WHERE id=?").get(contentId) as { status: string } | undefined; if (!current) throw new Error("CONTENT_NOT_FOUND"); if (action === "approved" && current.status !== "RENDERED") redirect(`/studio?content=${contentId}&review=render-required`); const status = action === "approved" ? "APPROVED" : action === "rejected" ? "FAILED" : "GENERATING"; db().prepare("UPDATE contents SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(status, contentId); db().prepare("INSERT INTO editorial_feedback(id,content_id,action,reason,note) VALUES(?,?,?,?,?)").run(id("feedback"), contentId, action, val(form, "reason") || null, val(form, "note") || null); revalidatePath("/studio"); }

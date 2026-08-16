@@ -13,7 +13,7 @@ Ao escolher um candidato, o backend gera e valida Master Content, duas variantes
 - Sem configuração: `AI_PROVIDER=disabled`; a UI mostra **IA NÃO CONFIGURADA**.
 - Render real: `CREATOMATE_API_KEY` e `CREATOMATE_TEMPLATE_ID`.
 - Resolução real de mídia: `ASSET_PROVIDER=pexels` e `PEXELS_API_KEY`. Sem isso, cenas obrigatórias permanecem `MISSING` e o conteúdo permanece `NEEDS_MEDIA`.
-- Contrato do template: `CREATOMATE_TEMPLATE_CONTRACT=dark-media-v2`.
+- Contrato do template: `CREATOMATE_TEMPLATE_CONTRACT=dark-media-composer-v1`.
 - Sem ambas: a UI mostra **RENDERIZAÇÃO NÃO CONFIGURADA** e nenhuma linha é marcada como concluída.
 
 ## Estados persistidos
@@ -28,7 +28,7 @@ Ao escolher um candidato, o backend gera e valida Master Content, duas variantes
 
 `assetQuery` é apenas intenção de busca. O resolver consulta o provider configurado e persiste em `render_plan_scene_assets` a query original, provider, URL HTTPS, tipo, atribuição/licença, status e erro. Cenas `SOURCE_MEDIA` e `STOCK` exigem mídia; `TEXT` e `BRAND` são registradas como `NOT_REQUIRED`. O RenderPlan não é alterado. Se qualquer cena obrigatória estiver ausente, o estado é `NEEDS_MEDIA` e nenhuma requisição de render é criada.
 
-## Contrato obrigatório do template Creatomate (`dark-media-v2`)
+## Contrato obrigatório do template Creatomate (`dark-media-composer-v1`)
 
 O primeiro template do MVP possui **6 slots de cena**. O RenderPlan pode usar de uma a seis cenas; mais de seis falha com `CREATOMATE_SCENE_LIMIT_EXCEEDED` antes de qualquer chamada externa. O template precisa expor `Brand` e, para cada `N` de 1 a 6:
 

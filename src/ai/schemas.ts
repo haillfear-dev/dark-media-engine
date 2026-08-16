@@ -1,0 +1,17 @@
+import { z } from "zod";
+
+export const factualClaimSchema = z.object({ text: z.string().min(1), confidence: z.enum(["HIGH", "MEDIUM", "LOW"]), sourceItemIds: z.array(z.string().min(1)).min(1) });
+export const ideaCandidateSchema = z.object({ title: z.string().min(1), angle: z.string().min(1), rationale: z.string().min(1), suggestedHook: z.string().min(1), viralityPotential: z.number().min(0).max(100), editorialStrategy: z.string().min(1), supportingFacts: z.array(z.string()), factualClaims: z.array(factualClaimSchema), sourceReferences: z.array(z.string()), warnings: z.array(z.string()), recommendedCandidate: z.boolean().default(false) });
+export const ideaCandidatesSchema = z.object({ candidates: z.array(ideaCandidateSchema).length(3) });
+export const rankingScoreSchema = z.object({ candidateIndex: z.number().int().min(0).max(2), hookStrength: z.number().min(0).max(100), clarity: z.number().min(0).max(100), novelty: z.number().min(0).max(100), retention: z.number().min(0).max(100), shareability: z.number().min(0).max(100), shortVideoFit: z.number().min(0).max(100), factualSupport: z.number().min(0).max(100), total: z.number().min(0).max(100), rationale: z.string().min(1) });
+export const rankedIdeasSchema = z.object({ recommendedIndex: z.number().int().min(0).max(2), scores: z.array(rankingScoreSchema).length(3) });
+export const sceneSchema = z.object({ order: z.number().int().positive(), text: z.string().min(1), durationSeconds: z.number().positive().max(30), visualType: z.enum(["SOURCE_MEDIA", "STOCK", "TEXT", "BRAND"]), assetQuery: z.string(), caption: z.string(), captionPosition: z.enum(["TOP", "CENTER", "BOTTOM"]), transition: z.string(), voiceOverText: z.string() });
+export const masterContentSchema = z.object({ title: z.string().min(1), thesis: z.string().min(1), hook: z.string().min(1), script: z.string().min(1), caption: z.string().min(1), cta: z.string().min(1), hashtags: z.array(z.string()), estimatedDuration: z.number().positive().max(180), factualClaims: z.array(factualClaimSchema), sourceReferences: z.array(z.string()), warnings: z.array(z.string()), scenes: z.array(sceneSchema).min(1) });
+export const platformVariantSchema = z.object({ platform: z.enum(["TIKTOK", "YOUTUBE_SHORTS"]), title: z.string(), hook: z.string().min(1), script: z.string().min(1), caption: z.string(), description: z.string(), cta: z.string(), hashtags: z.array(z.string()), targetDuration: z.number().positive().max(180) });
+export const platformVariantsSchema = z.object({ variants: z.array(platformVariantSchema).length(2).refine(v => new Set(v.map(x => x.platform)).size === 2, "Both platforms are required") });
+export const renderPlanSchema = z.object({ aspectRatio: z.literal("9:16"), targetDuration: z.number().positive().max(180), scenes: z.array(sceneSchema).min(1), backgroundAudio: z.object({ mood: z.string(), volume: z.number().min(0).max(1) }), branding: z.object({ brandName: z.string(), primaryColor: z.string(), fontFamily: z.string(), logoAssetUrl: z.string().nullable() }) }).refine(plan => Math.abs(plan.scenes.reduce((n, s) => n + s.durationSeconds, 0) - plan.targetDuration) <= 2, "Scene duration must match target duration");
+
+export type IdeaCandidate = z.infer<typeof ideaCandidateSchema>;
+export type MasterContent = z.infer<typeof masterContentSchema>;
+export type PlatformVariant = z.infer<typeof platformVariantSchema>;
+export type RenderPlan = z.infer<typeof renderPlanSchema>;

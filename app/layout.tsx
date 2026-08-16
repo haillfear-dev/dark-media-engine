@@ -1,3 +1,10 @@
-import "./styles.css"; import Link from "next/link"; import { getAIProvider } from "@/src/ai/provider";
-const nav=[["/","Visão geral"],["/hot-queue","Hot Queue"],["/studio","Studio"],["/ideas","Ideias"],["/contents","Conteúdos"],["/calendar","Calendário"],["/publications","Publicações"],["/integrations","Integrações"],["/brands","Marcas"],["/sources","Fontes"]];
-export default function Layout({children}:{children:React.ReactNode}){const ai=getAIProvider();return <html lang="pt-BR"><body><aside><div className="logo"><span>DM</span><div>Dark Media<small>CONTENT OS</small></div></div><nav>{nav.map(([href,label])=><Link href={href} key={href}>{label}</Link>)}</nav><div className="sideFoot"><i className={ai.available?'online':'offline'}/><div>{ai.name}<small>{ai.available?'Assistido':'Fluxo manual ativo'}</small></div></div></aside><main><header><div><b>RADAR POP</b><small>Workspace / operação editorial</small></div><div className="mode">ASSISTED MODE</div></header>{children}</main></body></html>}
+import "./styles.css";
+import { getAIProvider } from "@/src/ai/provider";
+import { Sidebar } from "@/app/components/Sidebar";
+
+export const metadata = { title: "Dark Media Engine", description: "Content Operating System com inteligência artificial" };
+
+export default function Layout({children}:{children:React.ReactNode}) {
+  const ai=getAIProvider();
+  return <html lang="pt-BR"><body><Sidebar provider={ai.name} available={ai.available}/><main><header><div><b>RADAR POP</b><small>Workspace / operação editorial</small></div><div className="mode">● ASSISTED MODE</div></header>{children}</main></body></html>;
+}

@@ -1,3 +1,4 @@
+import { loadConfig } from "../config.ts";
 export type AssetKind = "IMAGE" | "VIDEO";
 
 export type AssetRequest = {
@@ -89,7 +90,7 @@ export class PexelsAssetProvider implements AssetProvider {
 
   private async request(url: string) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Number(process.env.ASSET_PROVIDER_TIMEOUT_MS || 8000));
+    const timeout = setTimeout(() => controller.abort(), loadConfig().ASSET_PROVIDER_TIMEOUT_MS);
     try {
       const response = await this.fetcher(url, { headers: { Authorization: this.apiKey }, signal: controller.signal });
       if (!response.ok) throw new AssetProviderError("ASSET_PROVIDER_REQUEST_FAILED", `Pexels indisponível (${response.status})`);
@@ -105,8 +106,4 @@ export class PexelsAssetProvider implements AssetProvider {
 }
 function mediaScore(width=0,height=0,duration=0){const vertical=height>width?40:0,resolution=Math.min(40,Math.round((height/2160)*40)),usableDuration=duration>=3&&duration<=60?20:0;return vertical+resolution+usableDuration}
 
-export function getAssetProvider(): AssetProvider {
-  return process.env.ASSET_PROVIDER === "pexels" && process.env.PEXELS_API_KEY
-    ? new PexelsAssetProvider(process.env.PEXELS_API_KEY)
-    : new DisabledAssetProvider();
-}
+export function getAssetProvider(): AssetProvider { const c=loadConfig();return c.ASSET_PROVIDER === "pexels" && c.PEXELS_API_KEY ? new PexelsAssetProvider(c.PEXELS_API_KEY) : new DisabledAssetProvider(); }

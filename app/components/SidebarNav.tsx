@@ -8,7 +8,7 @@ const navigation = [
   ["/studio", "Studio", "✦"], ["/ideas", "Ideias", "⌁"],
   ["/contents", "Conteúdos", "▣"], ["/calendar", "Calendário", "□"],
   ["/publications", "Publicações", "↗"], ["/integrations", "Integrações", "⌘"],
-  ["/brands", "Marcas", "◎"], ["/sources", "Fontes", "⌕"],
+  ["/brands", "Marcas", "◎"], ["/sources", "Fontes", "⌕"], ["/health", "Health", "✓"],
 ] as const;
 
 export function SidebarNav() {

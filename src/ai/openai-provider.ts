@@ -2,6 +2,7 @@ import { prompts } from "./prompts.ts";
 import { ideaCandidatesSchema, masterContentSchema, platformVariantsSchema, rankedIdeasSchema, renderPlanSchema, type IdeaCandidate, type MasterContent, type PlatformVariant } from "./schemas.ts";
 import type { AIProvider, TopicContext, AIUsage } from "./provider.ts";
 import { z, type ZodType } from "zod";
+import { loadConfig } from "../config.ts";
 
 type ResponseEnvelope = { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }>; usage?: { input_tokens?: number; output_tokens?: number } };
 export class OpenAIProviderError extends Error { readonly code: string; constructor(code: string, message: string) { super(message); this.code = code; this.name = "OpenAIProviderError"; } }
@@ -9,12 +10,12 @@ export class OpenAIProviderError extends Error { readonly code: string; construc
 export class OpenAIProvider implements AIProvider {
   readonly available = true; readonly name = "OpenAI"; readonly provenanceLabel = "AI" as const;
   private readonly endpoint: string; private readonly fetcher: typeof fetch;
-  private readonly apiKey: string; readonly model: string;
-  constructor(apiKey: string, model = process.env.OPENAI_MODEL || "gpt-5-mini", fetcher: typeof fetch = fetch) { this.apiKey = apiKey; this.model = model; if (!apiKey) throw new OpenAIProviderError("OPENAI_NOT_CONFIGURED", "IA NÃO CONFIGURADA"); this.endpoint = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1/responses"; this.fetcher = fetcher; }
+  private readonly apiKey: string; readonly model: string; private readonly timeoutMs:number; private readonly maxContextChars:number;
+  constructor(apiKey: string, model = loadConfig().OPENAI_MODEL, fetcher: typeof fetch = fetch) { const config=loadConfig(); this.apiKey=apiKey;this.model=model;if(!apiKey)throw new OpenAIProviderError("OPENAI_NOT_CONFIGURED","IA NÃO CONFIGURADA");this.endpoint=config.OPENAI_BASE_URL;this.timeoutMs=config.OPENAI_TIMEOUT_MS;this.maxContextChars=config.OPENAI_MAX_CONTEXT_CHARS;this.fetcher=fetcher; }
   private async structured<T>(operation: string, instruction: string, input: unknown, schemaName: string, schema: ZodType<T>): Promise<{ value: T; usage: AIUsage }> {
-    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), Number(process.env.OPENAI_TIMEOUT_MS || 45000));
+    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const response = await this.fetcher(this.endpoint, { method: "POST", headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify({ model: this.model, instructions: instruction, input: JSON.stringify(input).slice(0, Number(process.env.OPENAI_MAX_CONTEXT_CHARS || 30000)), text: { format: { type: "json_schema", name: schemaName, strict: true, schema: z.toJSONSchema(schema) } } }) });
+      const response = await this.fetcher(this.endpoint, { method: "POST", headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify({ model: this.model, instructions: instruction, input: JSON.stringify(input).slice(0, this.maxContextChars), text: { format: { type: "json_schema", name: schemaName, strict: true, schema: z.toJSONSchema(schema) } } }) });
       if (!response.ok) throw new OpenAIProviderError("OPENAI_REQUEST_FAILED", `OpenAI indisponível (${response.status})`);
       const envelope = await response.json() as ResponseEnvelope;
       const text = envelope.output_text ?? envelope.output?.flatMap(item => item.content ?? []).map(item => item.text ?? "").join("") ?? "";

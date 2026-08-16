@@ -67,7 +67,7 @@ As abstrações editoriais são convertidas antes do envio:
 
 O backend rejeita propriedades fora do allowlist do adapter, mídia ausente/duplicada/demo, contrato legado, timeline inconsistente e narração excessiva antes do POST de render.
 
-Configure também `CREATOMATE_VOICE_ID` com o mesmo identificador registrado no RenderPlan. O backend compara os valores antes da chamada de render; o identificador serve somente para validação local e **não** é enviado como uma propriedade RenderScript.
+Configure também `CREATOMATE_VOICE_ID` o backend aplica esse identificador ao RenderPlan após a geração. A IA não escolhe IDs internos; o identificador serve somente para validação local e **não** é enviado como uma propriedade RenderScript.
 
 ## Auditoria das propriedades removidas
 

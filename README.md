@@ -33,6 +33,8 @@ Brand Brain, fontes, Topics, Hot Queue, batches de três candidatos, seleção, 
 
 Configure `AI_PROVIDER=openai` e `OPENAI_API_KEY` para geração real estruturada. Configure `CREATOMATE_API_KEY` e `CREATOMATE_TEMPLATE_ID` para render real. A seleção de uma ideia gera Master Content, variantes TikTok/Shorts e RenderPlan; a aprovação permanece bloqueada até a confirmação `RENDERED` do Creatomate. Sem credenciais, a interface informa a indisponibilidade e não simula sucesso. Veja `docs/AUTOMATED_CONTENT_PIPELINE.md`.
 
+O diagnóstico local e seguro está disponível em `/health`; ele não chama providers nem revela segredos. Imagens e vídeos stock vêm exclusivamente do Pexels quando `ASSET_PROVIDER=pexels` e `PEXELS_API_KEY` estão configurados — OpenAI não é provider de mídia. A geração e o ranking de ideias continuam como duas chamadas sequenciais, portanto o limite esperado é de até 90 segundos com o timeout padrão de 45 segundos por etapa.
+
 ## Ingestão automática de fontes
 
 Depois de migrations e seed, execute `npm run ingest -- --force` para coletar um lote pequeno das fontes editoriais habilitadas. Execuções normais com `npm run ingest` respeitam intervalos, ETag, Last-Modified e backoff persistidos. A Hot Queue prioriza Topics `REAL`; fixtures fictícias aparecem somente quando ainda não existem Topics reais.

@@ -1,57 +1,89 @@
-# Creatomate template — Dark Engine Video Composer v1
+# Creatomate — template bridge do Dark Engine Composer v1
 
-> **AÇÃO MANUAL NECESSÁRIA NO CREATOMATE.** O projeto usa a API de renderização, não a API/editor do painel para criar templates. Crie o template abaixo no painel antes de definir `CREATOMATE_TEMPLATE_ID`.
+> **AÇÃO MANUAL NECESSÁRIA NO CREATOMATE.** Este contrato usa apenas propriedades nativas de Template Modifications/RenderScript. O Dark Engine injeta toda a composição visual como um array RenderScript em `Composer.elements`; o template não decide o visual.
 
-## Contrato obrigatório
+## Contrato
 
-- Canvas: `1080 × 1920`, 30 fps, fundo neutro preto (`#080512`), duração máxima 45 s.
-- `CREATOMATE_TEMPLATE_CONTRACT=dark-media-composer-v1`.
-- Não inclua imagem, vídeo, texto de demonstração, mar, paisagem ou mídia default. Todo elemento dinâmico deve iniciar vazio; grupos de cenas iniciam com opacity `0`.
-- Crie **10 grupos** contíguos, nomeados `Scene-1.Group` até `Scene-10.Group`. Cada grupo precisa aceitar `time`, `duration` e `opacity` dinamicamente. Eles não devem sobrepor a timeline quando seus valores forem atualizados.
+- Canvas vertical `1080 × 1920`, 30 fps, duração máxima 45 s.
+- Configure `CREATOMATE_TEMPLATE_CONTRACT=dark-media-composer-v1`.
+- Não inclua imagem, vídeo, texto, background, música ou mídia demo/default.
+- Crie uma única composition vazia chamada exatamente `Composer`, ocupando o canvas e a timeline inteira. Marque sua propriedade nativa `elements` como modificável.
+- O backend substitui `Composer.elements` por elementos RenderScript nativos dos tipos `video`, `image`, `shape` e `text`, cada um com `time` e `duration` absolutos.
 
-## Elementos globais dinâmicos
+Não são mais necessários dez grupos visuais `Scene-N.Group`. As cenas visuais, captions, overlays, branding, transforms e animations são criados dinamicamente dentro de `Composer.elements`.
 
-| Nome exato | Tipo | Inicial | Propriedades dinâmicas |
-|---|---|---|---|
-| `Brand.Name` | Text | vazio | `text` |
-| `Brand.Accent` | Shape | `#D7FF54` | `fill_color` |
-| `Brand.Font` | Text style/helper | Inter | `font_family` |
-| `Brand.Logo` | Image | source vazio, opacity 0 | `source`, `opacity` |
-| `Music` | Audio | source vazio, volume 0 | `source`, `volume`, `metadata` |
-| `Voice` | template/TTS config | ElevenLabs | `VoiceId` |
+## Elementos de áudio do template
 
-Use uma única voz ElevenLabs para todos os elementos de voice-over. Configure a voz no template e replique a mesma configuração em cada slot.
+### Música
 
-## Estrutura de cada cena
+Crie um elemento `audio` vazio chamado `Music` e exponha somente as propriedades nativas:
 
-Repita `N=1…10`, sem conteúdo inicial:
+- `source`;
+- `volume`;
+- `time`;
+- `duration`.
 
-| Nome exato | Tipo | Inicial | Propriedades dinâmicas |
-|---|---|---|---|
-| `Scene-N.Group` | Composition/group | opacity 0 | `time`, `duration`, `opacity` |
-| `Scene-N.Media` | Video/Image | source vazio | `source`, `duration`, `fit`, `motion` |
-| `Scene-N.Headline` | Text | vazio | `text`, `fill_color` |
-| `Scene-N.Caption` | Text | vazio | `text`, `position`, `style`, `emphasis` |
-| `Scene-N.VoiceOver` | Audio/TTS | source vazio | `source`, `duration` |
-| `Scene-N.Transition` | transition helper | CUT | `type` |
-| `Scene-N.Overlay` | black shape | opacity 0 | `opacity` |
+Ele deve iniciar sem source e com volume zero. Mood e ducking permanecem decisões internas do Dark Engine; não são enviados como propriedades fictícias. Ducking deve ser configurado no mixer/template se disponível no plano contratado do Creatomate.
 
-`Media` deve preencher o canvas e ficar atrás de overlay/textos. `Headline`, `Caption` e branding ficam na safe area: 120 px das laterais, 180 px do topo e 300 px da base. Caption deve ter alto contraste, sombra/placa escura, máximo de três linhas e tamanho equivalente a 48–60 px em 1080×1920. TOP/CENTER/BOTTOM devem mapear para posições seguras, não para as bordas físicas.
+### Narração ElevenLabs
 
-Mapeie motions `NONE`, `SLOW_ZOOM_IN`, `SLOW_ZOOM_OUT`, `PAN_LEFT`, `PAN_RIGHT` e transitions `CUT`, `FADE`, `SLIDE`, `ZOOM`. Se o editor exigir animações pré-configuradas, crie variantes dentro do slot e faça a propriedade dinâmica selecionar a variante; não deixe nenhuma ativa como fallback visível.
+Crie dez elementos de áudio/TTS, `Scene-1.VoiceOver` até `Scene-10.VoiceOver`. Configure todos no painel com o **mesmo provider ElevenLabs e a mesma voz**. O provider/voice são configuração do elemento no Creatomate, não propriedades RenderScript inventadas.
 
-## Slots não utilizados
+Exponha somente:
 
-O Dark Engine envia opacity `0`, media source vazio e todos os textos/voice-over vazios para slots acima do total de cenas. Mesmo assim, valide no painel que um render com seis cenas não mostra qualquer elemento dos slots 7–10.
+- `source` — recebe o texto da narração, conforme o comportamento TTS configurado no elemento;
+- `time`;
+- `duration`.
 
-## Checklist antes de liberar créditos
+Slots sem cena recebem source vazio e duration zero. Não crie `Voice.VoiceId`.
 
-1. Render de teste sem modifications resulta apenas em canvas neutro, nunca em mídia demo.
-2. Cada nome acima aparece exatamente, incluindo maiúsculas e pontos.
-3. Cenas aceitam `time` e `duration` independentes e totalizam 30–45 s.
-4. Uma URL diferente em cada `Media.source` troca visualmente cada cena.
-5. Captions estão dentro da safe area em celular.
-6. ElevenLabs lê o texto recebido em `VoiceOver.source` usando a voz única configurada.
-7. Música vazia permanece silenciosa; não configure faixa default.
+## RenderScript injetado
 
-Somente depois desse checklist copie o ID para `CREATOMATE_TEMPLATE_ID`. O backend recusará contrato legado, mídia faltante/duplicada/demo, timeline inconsistente e narração maior que a cena antes de chamar a API de renders.
+Os elementos em `Composer.elements` usam apenas propriedades validadas pelo adapter:
+
+- comuns: `type`, `name`, `time`, `duration`, `x`, `y`, `width`, `height`, `x_alignment`, `y_alignment`, `opacity`, `animations`;
+- media: `source`, `fit`;
+- text: `text`, `fill_color`, `font_family`, `font_weight`, `font_size`, `line_height`, `background_color`, `background_x_padding`, `background_y_padding`, `border_radius`.
+
+As abstrações editoriais são convertidas antes do envio:
+
+- `captionPosition` → `y`, `x_alignment` e `y_alignment` reais;
+- `mediaMotion` → animations `scale` ou `move`;
+- `transition` → animations `fade`, `slide` ou `scale`; `CUT` não adiciona animation;
+- overlay → elemento `shape` com `fill_color` e `opacity`;
+- branding → elemento `text` com propriedades tipográficas nativas;
+- música → `Music.source`, `volume`, `time`, `duration`;
+- narração → source/time/duration dos slots TTS pré-configurados.
+
+## Checklist
+
+1. Render sem modifications deve ficar vazio/neutro e silencioso.
+2. `Composer.elements` deve aceitar substituição por array.
+3. `Music` deve estar vazio e silencioso por padrão.
+4. Os dez slots VoiceOver devem usar exatamente a mesma voz ElevenLabs.
+5. Nenhum elemento pode conter conteúdo demo, mar, paisagem ou placeholder.
+6. Confirme captions dentro da safe area vertical em um teste semântico no painel.
+7. Só então configure `CREATOMATE_TEMPLATE_ID`.
+
+O backend rejeita propriedades fora do allowlist do adapter, mídia ausente/duplicada/demo, contrato legado, timeline inconsistente e narração excessiva antes do POST de render.
+
+Configure também `CREATOMATE_VOICE_ID` com o mesmo identificador registrado no RenderPlan. O backend compara os valores antes da chamada de render; o identificador serve somente para validação local e **não** é enviado como uma propriedade RenderScript.
+
+## Auditoria das propriedades removidas
+
+| Propriedade anterior | Motivo | Substituição |
+|---|---|---|
+| `Scene-N.Media.motion` | abstração, não propriedade de media | objetos nativos em `animations` do elemento injetado |
+| `Scene-N.Caption.position` | enum editorial, não propriedade de text | `x`, `y`, `x_alignment`, `y_alignment` |
+| `Scene-N.Caption.style` | nome abstrato sem contrato RenderScript | propriedades tipográficas `font_*`, `fill_color` e background |
+| `Scene-N.Caption.emphasis` | array editorial sem propriedade equivalente direta | permanece no RenderPlan; não é enviado até existir renderer segmentado por spans |
+| `Scene-N.Transition.type` | helper fictício | animation nativa; CUT produz ausência de animation |
+| `Music.metadata` | metadata fictícia do adapter antigo | removida; somente source/volume/time/duration |
+| `Voice.VoiceId` | provider/voz não são definidos por esse campo | voz configurada nos elementos TTS do template e validada localmente por `CREATOMATE_VOICE_ID` |
+
+### Referências oficiais usadas no contrato
+
+- Creatomate API — Create a render: <https://creatomate.com/docs/api/reference/create-a-render>
+- RenderScript: <https://creatomate.com/docs/json/introduction>
+- Elements: <https://creatomate.com/docs/json/elements>
+- Animations: <https://creatomate.com/docs/json/animations>

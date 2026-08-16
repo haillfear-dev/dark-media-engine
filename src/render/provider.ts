@@ -1,93 +1,45 @@
 import type { RenderPlan } from "../ai/schemas.ts";
-import type { SceneAsset } from "../assets/resolution.ts";
+import { sceneRequiresMedia, type SceneAsset } from "../assets/resolution.ts";
 
-export const CREATOMATE_TEMPLATE_CONTRACT = "dark-media-v2";
-export const CREATOMATE_TEMPLATE_SCENE_SLOTS = 6;
-export type RenderStatus = "RENDERING" | "RENDERED" | "FAILED";
-export type RenderSubmission = { externalId: string; status: "RENDERING"; metadata: Record<string, unknown> };
-export type RenderResult = { externalId: string; status: RenderStatus; videoUrl?: string; errorCode?: string; errorDetail?: string; metadata: Record<string, unknown> };
-export interface RenderProvider {
-  readonly available: boolean;
-  readonly name: string;
-  submit(plan: RenderPlan, assets: SceneAsset[]): Promise<RenderSubmission>;
-  status(externalId: string): Promise<RenderResult>;
-}
-export class RenderProviderError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) { super(message); this.code = code; this.name = "RenderProviderError"; }
-}
-export class DisabledRenderProvider implements RenderProvider {
-  readonly available = false;
-  readonly name = "RENDERIZAÇÃO NÃO CONFIGURADA";
-  private fail(): never { throw new RenderProviderError("RENDER_NOT_CONFIGURED", this.name); }
-  async submit(): Promise<RenderSubmission> { return this.fail(); }
-  async status(): Promise<RenderResult> { return this.fail(); }
-}
+export const CREATOMATE_TEMPLATE_CONTRACT = "dark-media-composer-v1";
+export const CREATOMATE_TEMPLATE_SCENE_SLOTS = 10;
+export const RENDERSCRIPT_ELEMENT_PROPERTIES = new Set(["type","name","time","duration","source","text","x","y","width","height","x_alignment","y_alignment","fit","fill_color","font_family","font_weight","font_size","line_height","background_color","background_x_padding","background_y_padding","border_radius","opacity","volume","elements","animations"]);
+export const RENDERSCRIPT_ANIMATION_PROPERTIES = new Set(["type","time","duration","easing","transition","scope","direction","start_scale","end_scale","start_x","end_x"]);
+type RenderValue=string|number|boolean;
+export type RenderScriptAnimation={type:"fade"|"slide"|"scale"|"move";time?:number|string;duration:number|string;easing?:"linear"|"quadratic-in-out";transition?:boolean;scope?:"element";direction?:"left"|"right";start_scale?:string;end_scale?:string;start_x?:string;end_x?:string};
+export type RenderScriptElement={type:"video"|"image"|"text"|"shape";name:string;time:number;duration:number;source?:string;text?:string;x?:string;y?:string;width?:string;height?:string;x_alignment?:string;y_alignment?:string;fit?:"cover"|"contain";fill_color?:string;font_family?:string;font_weight?:number;font_size?:string;line_height?:string;background_color?:string;background_x_padding?:string;background_y_padding?:string;border_radius?:string;opacity?:string;animations?:RenderScriptAnimation[]};
+export type CreatomateModifications=Record<string,RenderValue|RenderScriptElement[]>;
+export type RenderStatus="RENDERING"|"RENDERED"|"FAILED";
+export type RenderSubmission={externalId:string;status:"RENDERING";metadata:Record<string,unknown>};
+export type RenderResult={externalId:string;status:RenderStatus;videoUrl?:string;errorCode?:string;errorDetail?:string;metadata:Record<string,unknown>};
+export type ComposerPreviewScene=RenderPlan["scenes"][number]&{asset:SceneAsset|null;status:"READY"|"MISSING_MEDIA"};
+export type ComposerPreview={status:"READY"|"NOT_READY";scenes:ComposerPreviewScene[];errors:string[]};
+export interface RenderProvider{readonly available:boolean;readonly name:string;submit(plan:RenderPlan,assets:SceneAsset[]):Promise<RenderSubmission>;status(externalId:string):Promise<RenderResult>}
+export class RenderProviderError extends Error{readonly code:string;constructor(code:string,message:string){super(message);this.code=code;this.name="RenderProviderError"}}
+export class DisabledRenderProvider implements RenderProvider{readonly available=false;readonly name="RENDERIZAÇÃO NÃO CONFIGURADA";private fail():never{throw new RenderProviderError("RENDER_NOT_CONFIGURED",this.name)}async submit():Promise<RenderSubmission>{return this.fail()}async status():Promise<RenderResult>{return this.fail()}}
 
-export class CreatomateProvider implements RenderProvider {
-  readonly available = true;
-  readonly name = "Creatomate";
-  private readonly key: string;
-  private readonly templateId: string;
-  private readonly contract: string;
-  private readonly fetcher: typeof fetch;
-  constructor(key: string, templateId: string, fetcher: typeof fetch = fetch, contract = process.env.CREATOMATE_TEMPLATE_CONTRACT ?? "") {
-    this.key = key; this.templateId = templateId; this.fetcher = fetcher; this.contract = contract;
-  }
-  async submit(plan: RenderPlan, assets: SceneAsset[]) {
-    validateTemplateContract(plan, assets, this.contract);
-    const response = await this.fetcher("https://api.creatomate.com/v2/renders", {
-      method: "POST", headers: { Authorization: `Bearer ${this.key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ template_id: this.templateId, modifications: renderModifications(plan, assets) }),
-    });
-    if (!response.ok) throw new RenderProviderError(response.status === 400 ? "CREATOMATE_TEMPLATE_INCOMPATIBLE" : "CREATOMATE_SUBMIT_FAILED", `Creatomate recusou o template/payload (${response.status})`);
-    const body = await response.json() as Array<{ id?: string }> | { id?: string };
-    const item = Array.isArray(body) ? body[0] : body;
-    if (!item?.id) throw new RenderProviderError("CREATOMATE_INVALID_RESPONSE", "Creatomate não retornou render ID");
-    return { externalId: item.id, status: "RENDERING" as const, metadata: { templateId: this.templateId, contract: this.contract } };
-  }
-  async status(externalId: string) {
-    const response = await this.fetcher(`https://api.creatomate.com/v2/renders/${encodeURIComponent(externalId)}`, { headers: { Authorization: `Bearer ${this.key}` } });
-    if (!response.ok) throw new RenderProviderError("CREATOMATE_STATUS_FAILED", `Consulta Creatomate falhou (${response.status})`);
-    const body = await response.json() as { status?: string; url?: string; error_message?: string };
-    if (body.status === "succeeded" && body.url) return { externalId, status: "RENDERED" as const, videoUrl: body.url, metadata: { providerStatus: body.status } };
-    if (body.status === "failed") return { externalId, status: "FAILED" as const, errorCode: "CREATOMATE_RENDER_FAILED", errorDetail: body.error_message || "Render falhou", metadata: { providerStatus: body.status } };
-    return { externalId, status: "RENDERING" as const, metadata: { providerStatus: body.status || "unknown" } };
-  }
+export class CreatomateProvider implements RenderProvider{
+ readonly available=true;readonly name="Creatomate";private readonly key:string;private readonly templateId:string;private readonly fetcher:typeof fetch;private readonly contract:string;private readonly voiceId:string;
+ constructor(key:string,templateId:string,fetcher:typeof fetch=fetch,contract=process.env.CREATOMATE_TEMPLATE_CONTRACT??"",voiceId=process.env.CREATOMATE_VOICE_ID??""){this.key=key;this.templateId=templateId;this.fetcher=fetcher;this.contract=contract;this.voiceId=voiceId}
+ async submit(plan:RenderPlan,assets:SceneAsset[]){validateTemplateContract(plan,assets,this.contract);if(!this.voiceId||this.voiceId!==plan.voice.voiceId)throw new RenderProviderError("RENDER_BLOCKED_VOICE_CONFIGURATION","A voz do Composer não corresponde à voz configurada no template");const modifications=renderModifications(plan,assets);assertNativeRenderScript(modifications);const response=await this.request("https://api.creatomate.com/v2/renders",{method:"POST",headers:{Authorization:`Bearer ${this.key}`,"Content-Type":"application/json"},body:JSON.stringify({template_id:this.templateId,modifications})});if(!response.ok)throw new RenderProviderError(response.status===400?"CREATOMATE_TEMPLATE_INCOMPATIBLE":"CREATOMATE_SUBMIT_FAILED",`Creatomate recusou o template/payload (${response.status})`);const body=await response.json() as Array<{id?:string}>|{id?:string};const item=Array.isArray(body)?body[0]:body;if(!item?.id)throw new RenderProviderError("CREATOMATE_INVALID_RESPONSE","Creatomate não retornou render ID");return{externalId:item.id,status:"RENDERING" as const,metadata:{templateId:this.templateId,contract:this.contract}}}
+ async status(externalId:string){const response=await this.request(`https://api.creatomate.com/v2/renders/${encodeURIComponent(externalId)}`,{headers:{Authorization:`Bearer ${this.key}`}});if(!response.ok)throw new RenderProviderError("CREATOMATE_STATUS_FAILED",`Consulta Creatomate falhou (${response.status})`);const body=await response.json() as {status?:string;url?:string;error_message?:string};if(body.status==="succeeded"&&body.url)return{externalId,status:"RENDERED" as const,videoUrl:body.url,metadata:{providerStatus:body.status}};if(body.status==="failed")return{externalId,status:"FAILED" as const,errorCode:"CREATOMATE_RENDER_FAILED",errorDetail:body.error_message||"Render falhou",metadata:{providerStatus:body.status}};return{externalId,status:"RENDERING" as const,metadata:{providerStatus:body.status||"unknown"}}}
+ private async request(url:string,init:RequestInit){const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),Number(process.env.CREATOMATE_TIMEOUT_MS||15000));try{return await this.fetcher(url,{...init,signal:controller.signal})}catch(error){if((error as Error).name==="AbortError")throw new RenderProviderError("CREATOMATE_TIMEOUT","Tempo limite do Creatomate excedido");throw new RenderProviderError("CREATOMATE_NETWORK_ERROR","Falha de comunicação com o Creatomate")}finally{clearTimeout(timeout)}}
 }
+const unsafeUrl=(url:string)=>!url.startsWith("https://")||/(placeholder|demo|sample|example|ocean|sea|beach)/i.test(url),wordsPerSecond=2.8;
+export function composerPreview(plan:RenderPlan,assets:SceneAsset[]):ComposerPreview{const byScene=new Map(assets.map(a=>[a.sceneOrder,a])),errors:string[]=[],seen=new Set<string>();const scenes=plan.scenes.map(scene=>{const asset=byScene.get(scene.order)??null;let status:"READY"|"MISSING_MEDIA"="READY";if(sceneRequiresMedia(scene.visualType)){if(asset?.status!=="RESOLVED"||!asset.assetUrl||unsafeUrl(asset.assetUrl)){status="MISSING_MEDIA";errors.push(`SCENE_${scene.order}_MEDIA_REQUIRED`)}else if(seen.has(asset.assetUrl)){status="MISSING_MEDIA";errors.push(`SCENE_${scene.order}_DUPLICATE_MEDIA`)}else seen.add(asset.assetUrl)}return{...scene,asset,status}});try{validateTimelineAndNarration(plan)}catch(error){errors.push((error as RenderProviderError).code)}return{status:errors.length?"NOT_READY":"READY",scenes,errors}}
+function validateTimelineAndNarration(plan:RenderPlan){let cursor=0;for(const scene of plan.scenes){if(Math.abs(scene.startSeconds-cursor)>.05)throw new RenderProviderError("RENDER_BLOCKED_TIMELINE",`Timeline inconsistente na cena ${scene.order}`);if(scene.narration.trim().split(/\s+/).length/wordsPerSecond>scene.durationSeconds+.75)throw new RenderProviderError("RENDER_BLOCKED_VOICE_OVERFLOW",`Narração da cena ${scene.order} excede sua duração`);cursor+=scene.durationSeconds}if(Math.abs(cursor-plan.targetDuration)>.05)throw new RenderProviderError("RENDER_BLOCKED_TIMELINE","Duração das cenas difere do total")}
+export function validateTemplateContract(plan:RenderPlan,assets:SceneAsset[],contract:string){if(contract!==CREATOMATE_TEMPLATE_CONTRACT||plan.version!==CREATOMATE_TEMPLATE_CONTRACT)throw new RenderProviderError("RENDER_BLOCKED_TEMPLATE_CONTRACT",`CREATOMATE_TEMPLATE_CONTRACT deve ser ${CREATOMATE_TEMPLATE_CONTRACT}`);if(plan.scenes.length<6||plan.scenes.length>CREATOMATE_TEMPLATE_SCENE_SLOTS)throw new RenderProviderError("RENDER_BLOCKED_SCENE_COUNT","Composer requer entre 6 e 10 cenas");for(const asset of assets)if(asset.assetUrl&&unsafeUrl(asset.assetUrl))throw new RenderProviderError("RENDER_BLOCKED_GENERIC_TEMPLATE",`Cena ${asset.sceneOrder} contém mídia genérica/demo`);const preview=composerPreview(plan,assets),missing=preview.errors.find(x=>x.includes("MEDIA_REQUIRED")),duplicate=preview.errors.find(x=>x.includes("DUPLICATE_MEDIA"));if(missing)throw new RenderProviderError("RENDER_BLOCKED_MISSING_ASSET",missing);if(duplicate)throw new RenderProviderError("RENDER_BLOCKED_DUPLICATE_MEDIA",duplicate);if(preview.errors.length)validateTimelineAndNarration(plan);for(const scene of plan.scenes)if(!scene.caption.trim()||!scene.narration.trim())throw new RenderProviderError("RENDER_BLOCKED_REQUIRED_SLOT",`Cena ${scene.order} não preenche caption/narration`)}
 
-export function validateTemplateContract(plan: RenderPlan, assets: SceneAsset[], contract: string) {
-  if (contract !== CREATOMATE_TEMPLATE_CONTRACT) throw new RenderProviderError("CREATOMATE_TEMPLATE_CONTRACT_INVALID", `CREATOMATE_TEMPLATE_CONTRACT deve ser ${CREATOMATE_TEMPLATE_CONTRACT}`);
-  if (plan.scenes.length > CREATOMATE_TEMPLATE_SCENE_SLOTS) throw new RenderProviderError("CREATOMATE_SCENE_LIMIT_EXCEEDED", `RenderPlan possui ${plan.scenes.length} cenas; o template ${CREATOMATE_TEMPLATE_CONTRACT} suporta no máximo ${CREATOMATE_TEMPLATE_SCENE_SLOTS}`);
-  const byScene = new Map(assets.map(asset => [asset.sceneOrder, asset]));
-  for (const scene of plan.scenes) {
-    if (scene.order < 1 || scene.order > CREATOMATE_TEMPLATE_SCENE_SLOTS) throw new RenderProviderError("CREATOMATE_SCENE_SLOT_INVALID", `Cena ${scene.order} não possui slot no template`);
-    if (!scene.text || !scene.voiceOverText || scene.durationSeconds <= 0) throw new RenderProviderError("CREATOMATE_TEMPLATE_DATA_INVALID", `Cena ${scene.order} não satisfaz Text.text, VoiceOver.source e duração`);
-    if (scene.visualType === "SOURCE_MEDIA" || scene.visualType === "STOCK") {
-      const asset = byScene.get(scene.order);
-      if (asset?.status !== "RESOLVED" || !asset.assetUrl?.startsWith("https://")) throw new RenderProviderError("CREATOMATE_MEDIA_REQUIRED", `Cena ${scene.order} não possui mídia resolvida`);
-    }
-  }
+export function renderModifications(plan:RenderPlan,assets:SceneAsset[]):CreatomateModifications{
+ validateTemplateContract(plan,assets,CREATOMATE_TEMPLATE_CONTRACT);const byScene=new Map(assets.map(a=>[a.sceneOrder,a])),elements:RenderScriptElement[]=[];
+ for(const scene of plan.scenes){const asset=byScene.get(scene.order),prefix=`Scene-${scene.order}`,transition=transitionAnimation(scene.transition),motion=motionAnimation(scene.mediaMotion);if(sceneRequiresMedia(scene.visualType)&&asset?.assetUrl)elements.push({type:asset.assetType==="VIDEO"?"video":"image",name:`${prefix}.Media`,time:scene.startSeconds,duration:scene.durationSeconds,source:asset.assetUrl,x:"50%",y:"50%",width:"100%",height:"100%",x_alignment:"50%",y_alignment:"50%",fit:scene.mediaFit.toLowerCase() as "cover"|"contain",animations:[...transition,...motion]});else elements.push({type:"shape",name:`${prefix}.Background`,time:scene.startSeconds,duration:scene.durationSeconds,x:"50%",y:"50%",width:"100%",height:"100%",x_alignment:"50%",y_alignment:"50%",fill_color:"#080512",animations:transition});if(scene.overlay?.enabled)elements.push({type:"shape",name:`${prefix}.Overlay`,time:scene.startSeconds,duration:scene.durationSeconds,x:"50%",y:"50%",width:"100%",height:"100%",x_alignment:"50%",y_alignment:"50%",fill_color:"#000000",opacity:`${Math.round(scene.overlay.opacity*100)}%`});if(scene.headline)elements.push(textElement(`${prefix}.Headline`,scene.headline,scene.startSeconds,scene.durationSeconds,headlineY(scene.captionPosition),plan.branding.primaryColor,plan.branding.fontFamily,"64 px",700));elements.push({...textElement(`${prefix}.Caption`,scene.caption,scene.startSeconds,scene.durationSeconds,captionY(scene.captionPosition),"#FFFFFF",plan.branding.fontFamily,"52 px",700),width:"82%",background_color:"rgba(0,0,0,0.72)",background_x_padding:"24 px",background_y_padding:"14 px",border_radius:"12 px"});}
+ elements.push(textElement("Brand.Name",plan.branding.brandName,0,plan.targetDuration,"8%",plan.branding.primaryColor,plan.branding.fontFamily,"30 px",700));
+ const modifications:CreatomateModifications={"Composer.elements":elements,"Music.source":plan.backgroundAudio.sourceUrl??"","Music.volume":plan.backgroundAudio.sourceUrl?Math.round(plan.backgroundAudio.volume*100):0,"Music.time":0,"Music.duration":plan.targetDuration};for(const scene of plan.scenes){modifications[`Scene-${scene.order}.VoiceOver.source`]=scene.narration;modifications[`Scene-${scene.order}.VoiceOver.time`]=scene.startSeconds;modifications[`Scene-${scene.order}.VoiceOver.duration`]=scene.durationSeconds}for(let n=plan.scenes.length+1;n<=CREATOMATE_TEMPLATE_SCENE_SLOTS;n++){modifications[`Scene-${n}.VoiceOver.source`]="";modifications[`Scene-${n}.VoiceOver.duration`]=0}assertNativeRenderScript(modifications);return modifications;
 }
-
-export function renderModifications(plan: RenderPlan, assets: SceneAsset[]) {
-  validateTemplateContract(plan, assets, CREATOMATE_TEMPLATE_CONTRACT);
-  const byScene = new Map(assets.map(asset => [asset.sceneOrder, asset]));
-  const modifications: Record<string, string | number> = { "Brand.text": plan.branding.brandName };
-  for (const scene of plan.scenes) {
-    const prefix = `Scene-${scene.order}`;
-    modifications[`${prefix}.Text.text`] = scene.text;
-    modifications[`${prefix}.Text.duration`] = scene.durationSeconds;
-    modifications[`${prefix}.Media.duration`] = scene.durationSeconds;
-    modifications[`${prefix}.VoiceOver.source`] = scene.voiceOverText;
-    const asset = byScene.get(scene.order);
-    if (asset?.status === "RESOLVED" && asset.assetUrl) modifications[`${prefix}.Media.source`] = asset.assetUrl;
-  }
-  return modifications;
- }
-
-export function getRenderProvider(): RenderProvider {
-  return process.env.CREATOMATE_API_KEY && process.env.CREATOMATE_TEMPLATE_ID
-    ? new CreatomateProvider(process.env.CREATOMATE_API_KEY, process.env.CREATOMATE_TEMPLATE_ID)
-    : new DisabledRenderProvider();
-}
+function textElement(name:string,text:string,time:number,duration:number,y:string,color:string,font:string,size:string,weight:number):RenderScriptElement{return{type:"text",name,time,duration,text,x:"50%",y,width:"88%",height:"auto",x_alignment:"50%",y_alignment:"50%",fill_color:color,font_family:font,font_weight:weight,font_size:size,line_height:"115%"}}
+function captionY(position:RenderPlan["scenes"][number]["captionPosition"]){return position==="TOP"?"22%":position==="CENTER"?"50%":"78%"}
+function headlineY(position:RenderPlan["scenes"][number]["captionPosition"]){return position==="TOP"?"38%":position==="CENTER"?"32%":"24%"}
+function transitionAnimation(value:RenderPlan["scenes"][number]["transition"]):RenderScriptAnimation[]{if(value==="CUT")return[];if(value==="FADE")return[{type:"fade",time:0,duration:.3,transition:true}];if(value==="SLIDE")return[{type:"slide",time:0,duration:.35,transition:true,direction:"right",easing:"quadratic-in-out"}];return[{type:"scale",time:0,duration:.35,transition:true,scope:"element",start_scale:"115%",end_scale:"100%",easing:"quadratic-in-out"}]}
+function motionAnimation(value:RenderPlan["scenes"][number]["mediaMotion"]):RenderScriptAnimation[]{if(value==="NONE")return[];if(value==="SLOW_ZOOM_IN")return[{type:"scale",time:0,duration:"100%",scope:"element",start_scale:"100%",end_scale:"112%",easing:"linear"}];if(value==="SLOW_ZOOM_OUT")return[{type:"scale",time:0,duration:"100%",scope:"element",start_scale:"112%",end_scale:"100%",easing:"linear"}];return[{type:"move",time:0,duration:"100%",scope:"element",start_x:value==="PAN_LEFT"?"54%":"46%",end_x:value==="PAN_LEFT"?"46%":"54%",easing:"linear"}]}
+export function assertNativeRenderScript(modifications:CreatomateModifications){const allowedModification=/^(Composer\.elements|Music\.(source|volume|time|duration)|Scene-(?:[1-9]|10)\.VoiceOver\.(source|time|duration))$/;for(const [key,value] of Object.entries(modifications)){if(!allowedModification.test(key))throw new RenderProviderError("CREATOMATE_UNSUPPORTED_MODIFICATION",`Propriedade não suportada: ${key}`);if(Array.isArray(value))for(const element of value){for(const key of Object.keys(element))if(!RENDERSCRIPT_ELEMENT_PROPERTIES.has(key))throw new RenderProviderError("CREATOMATE_UNSUPPORTED_ELEMENT_PROPERTY",key);for(const animation of element.animations??[])for(const key of Object.keys(animation))if(!RENDERSCRIPT_ANIMATION_PROPERTIES.has(key))throw new RenderProviderError("CREATOMATE_UNSUPPORTED_ANIMATION_PROPERTY",key)}}}
+export function getRenderProvider():RenderProvider{return process.env.CREATOMATE_API_KEY&&process.env.CREATOMATE_TEMPLATE_ID&&process.env.CREATOMATE_VOICE_ID?new CreatomateProvider(process.env.CREATOMATE_API_KEY,process.env.CREATOMATE_TEMPLATE_ID):new DisabledRenderProvider()}
